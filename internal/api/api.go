@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -144,6 +145,7 @@ func (a *API) Push(filePath, folderID string) (*File, error) {
 
 	// Create the HTTP request
 	req, err := http.NewRequest("PUT", url, body)
+	log.Println(req.URL)
 	if err != nil {
 		log.Fatalf("failed to create request: %s", err)
 		return nil, err
@@ -176,35 +178,39 @@ func (a *API) Push(filePath, folderID string) (*File, error) {
 	return &uploadResp, nil
 }
 
-func extractLinks(n *html.Node) []*Link {
-	var folders []*Link = make([]*Link, 0)
-	var f func(*html.Node, bool)
-	f = func(n *html.Node, inTable bool) {
-		if n.Type == html.ElementNode {
-			if n.Data == "table" {
-				inTable = true
-			}
-			if inTable && n.Data == "a" {
-				var href, text string
-				for _, attr := range n.Attr {
-					if attr.Key == "href" {
-						href = attr.Val
-						break
-					}
-				}
-				if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
-					text = n.FirstChild.Data
-				}
-				if href != "" && text != "" {
-					folders = append(folders, &Link{Href: href, Name: text})
-				}
-			}
-		}
+func (a *API) CreateFolder(name string) (*Link, error) {
+	formData := url.Values{"name": {name}}
+	formDataEncoded := formData.Encode()
+	requestBody := bytes.NewBufferString(formDataEncoded)
 
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c, inTable)
-		}
+	req, err := http.NewRequest("POST", "https://buzzheavier.com/fl", requestBody)
+	log.Println(req.URL)
+	if err != nil {
+		log.Fatalf("failed to create request: %s", err)
+		return nil, err
 	}
-	f(n, false)
-	return folders
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Cookie", fmt.Sprintf("session=%s", a.token))
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		log.Fatalf("failed to do request: %s", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("failed to read response body: %s", err)
+		return nil, err
+	}
+
+	doc, err := html.Parse(bytes.NewReader(body))
+	if err != nil {
+		log.Fatalf("failed to parse response body: %s", err)
+		return nil, err
+	}
+
+	return extractNewLink(doc), nil
 }

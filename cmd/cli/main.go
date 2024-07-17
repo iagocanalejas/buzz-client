@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,12 +19,12 @@ func main() {
 	flag.Parse()
 
 	if flag.NArg() == 0 {
-		fmt.Println("Usage: program -i <folder> <file-path>")
+		log.Println("Usage: program -i <folder> <file-path>")
 		os.Exit(1)
 	}
 
 	if intoFolder == "" {
-		fmt.Println("no folder provided")
+		log.Println("no folder provided")
 		os.Exit(1)
 	}
 	intoFolder = strings.ToLower(intoFolder)
@@ -32,16 +33,20 @@ func main() {
 	p, err := os.Stat(argPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("file does not exist")
+			log.Println("file does not exist")
 			os.Exit(1)
 		}
 		panic(err)
 	}
 
-	folder := retrieveFolderLinx(client, intoFolder)
+	var folder *api.Link
+	folder = retrieveFolderLink(client, intoFolder)
 	if folder == nil {
-		// TODO: create new folder
-		fmt.Println("folder does not exist in remote")
+		folder, err = client.CreateFolder(intoFolder)
+		if err != nil || folder == nil {
+			log.Println(err)
+			os.Exit(1)
+		}
 	}
 
 	if p.IsDir() {
@@ -62,7 +67,7 @@ func main() {
 	}
 }
 
-func retrieveFolderLinx(client *api.API, name string) *api.Link {
+func retrieveFolderLink(client *api.API, name string) *api.Link {
 	folders, err := client.List()
 	if err != nil {
 		fmt.Println("could not list folders")
